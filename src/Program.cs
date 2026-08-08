@@ -7,17 +7,114 @@ using ILGPU.Runtime;
 
 namespace NN.GPU
 {
+    public class mainHandler: IDisposable
+    {
+        private readonly GPUMidLayer midLayer;
+      
+        private weightsHandler wHandler = new weightsHandler();
+        
+        public int[] calcNetwork(int[] input,string fileName,int[] layerSizes)
+        {
+            var midLayer = new GpuMiddleLayer(layerSizes,null,false);
+            for(int i =0;i<LayerSizes.Length;i++)
+            {
+                midLayer.SetWeights(i,wHandler.LoadWeights(midLayer._accelerator,fileName).weights[i],wHandler.LoadWeights(midLayer._accelerator,fileName).biases[i]);
+            }
+            return midLayer.Forward(input);
+        }
+        public void makeRandom(int[] input,int[] layerSizes)
+        {
+            var midLayer = new GpuMiddleLayer(layerSizes,null,false);
+            midLayer.Forward(input);
+        }
+    }
     public class weightsHandler()
     {
-        public void SaveWeights(MemoryBuffer1D<float, Stride1D.Dense>[] weights, string name)
+        public void SaveWeights(MemoryBuffer1D<float, Stride1D.Dense>[] weights,MemoryBuffer1D<float, Stride1D.Dense>[] biases, string name)
         {
-            //save weights to bin file
+            using (var fs = new FileStream(name + "_weights.bin",FileMode.Create,FileAccess.Write))
+            using (var bw = new BinaryWriter(fs))
+            {
+                bw.Write(weights.Length);
+
+                foreach(var buffer in weights)
+                {
+                    float[] hostData = buffer.GetAsArray1D();
+
+                    bw.Write(hostData.Length);
+
+                   byte[] byteData = new byte[hostData.Length * sizeof(float)];
+                   Buffer.BlockCopy(hostData,0,byteData,0,byteData.Length);
+                   bw.Write(byteData);
+                }
+            }
+            using (var fs = new FileStream(name + "_biases.bin",FileMode.Create,FileAccess.Write))
+            using (var bw = new BinaryWriter(fs))
+            {
+                bw.Write(biases.Length);
+
+                foreach(var buffer in biases)
+                {
+                    float[] hostData = buffer.GetAsArray1D();
+
+                    bw.Write(hostData.Length);
+
+                   byte[] byteData = new byte[hostData.Length * sizeof(float)];
+                   Buffer.BlockCopy(hostData,0,byteData,0,byteData.Length);
+                   bw.Write(byteData);
+                }
+            }
+        }
+        public (MemoryBuffer1D<float, Stride1D.Dense>[] weights,MemoryBuffer1D<float, Stride1D.Dense>[] biases) LoadWeights(Accelerator accelerator,string name)
+        {
+            var result_weights = new MemoryBuffer1D<float, Stride1D.Dense>[count];
+            var result_biases = new MemoryBuffer1D<float, Stride1D.Dense>[count];
+            using (var fs = new FileStream(name+"_weights.bin", FileMode.Open, FileAccess.Read))
+            using (var br = new BinaryReader(fs))
+            {
+                int count = br.ReadInt32();
+              
+                for(int i = 0; i < count; i++)
+                {
+                    int len = br.ReadInt32();
+                    byte[] byteData = br.ReadBytes(len * sizeof(float));
+
+                    float[] data = new float[len];
+                    Buffer.BlockCopy(byteData,0,data,byteData.Length);
+
+                    var buffer = accelerator.Allocate1D<float>(len);
+                    buffer.copyFromCPU(data);
+                    result_weights[i] = buffer;
+                }
+                
+            }
+            using (var fs = new FileStream(name+"_biases.bin", FileMode.Open, FileAccess.Read))
+            using (var br = new BinaryReader(fs))
+            {
+                int count = br.ReadInt32();
+              
+                for(int i = 0; i < count; i++)
+                {
+                    int len = br.ReadInt32();
+                    byte[] byteData = br.ReadBytes(len * sizeof(float));
+
+                    float[] data = new float[len];
+                    Buffer.BlockCopy(byteData,0,data,byteData.Length);
+
+                    var buffer = accelerator.Allocate1D<float>(len);
+                    buffer.copyFromCPU(data);
+                    result_biases[i] = buffer;
+                }
+                
+            }
+            return (result_weights,result_biases);
         }
     }
     public class GPUMidLayer : IDisposable
     {
+        private weightsHandler wHandler;
         private readonly Context _context;
-        private readonly Accelerator _accelerator;
+        public Accelerator _accelerator;
         private readonly int[] _layerSizes;
         private readonly MemoryBuffer1D<float, Stride1D.Dense>[] _weights;
         private readonly MemoryBuffer1D<float, Stride1D.Dense>[] _biases;
@@ -162,10 +259,10 @@ namespace NN.GPU
             }
             return result;
         }
-        public void SetWeights(int layerIndex,float[] weights, float[] biases)
+        public void SetWeights(int layerIndex,MemoryBuffer1D<float, Stride1D.Dense> weights, MemoryBuffer1D<float, Stride1D.Dense> biases)
         {
-            _weights[layerIndex].copyFromCPU(weights);
-            _biases[layerIndex].copyFromCPU(biases);
+            _weights[layerIndex] = weights;
+            _biases[layerIndex] = biases;
         }
         public void Dispose()
         {
