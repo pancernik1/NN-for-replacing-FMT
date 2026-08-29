@@ -1,5 +1,7 @@
 # Intro
 I had a couple free days, and decided that i wanted a challange, because of that, the idea was born: make a custom neural network. Originally it was meant to replace FMT's (mentioned further ahead) but ran out of time and decided i don't want to continue the project and decided to ship it as a library.
+<img width="1270" height="369" alt="image" src="https://github.com/user-attachments/assets/9e384fc8-a277-4851-ab85-c3252c093a4f" />
+
 # Neural Network for replacing Fourier-Mellin Transforms
 ## What is this project?
 This is a side project i made in the span of 2 days, which aims to beat the effieciency of Fourier-Mellin Transforms 
